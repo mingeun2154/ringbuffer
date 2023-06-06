@@ -42,7 +42,7 @@ namespace rtos {
 
 
     /**
-     * @brief 아직 소비되지 않은 데이터가 덮어써지는 것을 허용한다.
+     * @brief 버퍼에 빈 공간이 없으면 값을 쓰지 않는다.
      *
      * @param item 버퍼에 저장할 새로운 데이터.
      */
@@ -51,11 +51,11 @@ namespace rtos {
         unique_lock<mutex> lock(_mutex);
 
         /* Ciritcal section start */
-
-        _pBuffer[_front] = item;
-        _front = (_front + 1) % BUFFER_SIZE;
-        _isFull = (_front == _back);
-
+        if (!_isFull) {
+            _pBuffer[_front] = item;
+            _front = (_front + 1) % BUFFER_SIZE;
+            _isFull = (_front == _back);
+        }
          /* ciritcal section end */
 
         lock.unlock();

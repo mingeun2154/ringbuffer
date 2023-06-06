@@ -6,8 +6,10 @@
  */
 
 
+#include <cstdio>
 #include <cstdlib>
 #include <iostream>
+#include <mutex>
 #include <ostream>
 #include <pthread.h>
 #include <stdio.h>
@@ -33,22 +35,49 @@ namespace ANSI_CONTROL {
 }; // ANSI_CONTROL
 
 
-const int BUFFER_SIZE = 5;
+
+/**
+ * @brief 시뮬레이션 변수
+ */
+namespace SIMUL_PARAM {
+
+    const int BUFFER_SIZE = 5;
+
+    // testcase a
+    const period TA_PROD_PERIOD = 3;
+    const period TA_CONS_PERIOD = 1;
+    const int TA_PROD_NUM = 2;
+    const int TA_CONS_NUM = 3;
+
+    // testcase b
+    const period TB_PROD_PERIOD = 1;
+    const period TB_CONS_PERIOD = 1;
+    const int TB_PROD_NUM = 3;
+    const int TB_CONS_NUM = 2;
+
+    // testcase c
+    const period TC_PROD_PERIOD = 1;
+    const period TC_CONS_PERIOD = 3;
+    const int TC_PROD_NUM = 5;
+    const int TC_CONS_NUM = 2;
+    
+}; // SIMUL_PARAM
+
 
 void sigintHandler(int);
 void* produce(void*); // Body of producer thread.
 void* consume(void*); // Body of consumer thread.
 
-void testbody(period, period);
-void testcase1(); // Data의 평균 발생속도 < 평균 처리속도
-void testcase2(); // Data의 평균 발생속도 = 평균 처리속도
-void testcase3(); // Data의 평균 발생속도 > 평균 처리속도
+void testbody(period, period, int, int);
+void testcaseA(); // Data의 평균 발생속도 < 평균 처리속도
+void testcaseB(); // Data의 평균 발생속도 = 평균 처리속도
+void testcaseC(); // Data의 평균 발생속도 > 평균 처리속도
 void printUsage();
 
 
 int main(int argc, char* argv[]) {
 
-    cout << ANSI_CONTROL::CLEAR;
+    printf("%s", ANSI_CONTROL::CLEAR);
 
     if (argc != 2) {
         printUsage();
@@ -57,9 +86,9 @@ int main(int argc, char* argv[]) {
 
     char testcaseNum = (char)(*argv[1]);
     switch (testcaseNum) {
-        case 'a': testcase1(); break;
-        case 'b': testcase2(); break;
-        case 'c': testcase3(); break;
+        case 'a': testcaseA(); break;
+        case 'b': testcaseB(); break;
+        case 'c': testcaseC(); break;
         default: printUsage(); break;
     }
 
@@ -85,7 +114,7 @@ void printUsage() {
  *
  * @return 정수 값(초)
  */
-void printElapsedtime() {
+long long elapsedtime() {
 
     static auto start = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
 
@@ -94,14 +123,12 @@ void printElapsedtime() {
     auto duration = now.time_since_epoch();  // 에포크로부터의 시간 간격 계산
     auto milliseconds = chrono::duration_cast<chrono::milliseconds>(duration).count();  // 밀리초로 변환
 
-    auto ts = (milliseconds - start) % 10000;
-    printf("[timestamp:%07lldms] ", ts);
-
+    return  (milliseconds - start) % 10000;
 }
 
 
 void sigintHandler(int signum) {
-    printf("\rExit program\n");
+    printf("\r  \nExit program\n\n");
     exit(signum);
 }
 
@@ -109,21 +136,27 @@ void sigintHandler(int signum) {
 void* consume(void* param) {
 
     ThreadArgs* pArgs = (ThreadArgs*)param;
+
+    size_t threadNum = pArgs->threadNum;
     RingBuffer* pBuffer = pArgs->pRingBuffer;
     period t = pArgs->interval;
 
     while (true) {
         sleep(t);
         try {
-            printElapsedtime();
-            printf("%s[Consumer] 소비한 데이터: %d%s\n",
+            printf("[timestamp:%07lldms] %s[Consumer%2zu] 소비한 데이터: %d%s\n",
+                elapsedtime(),
                 ANSI_CONTROL::BLUE,
+                threadNum,
                 (int)(pBuffer->get()),
                 ANSI_CONTROL::DEFAULT);
+            fflush(stdout);
         }
         catch (const EmptyBufferReadException& e) {
-            printf("%s[Consumer] %s%s\n",
-                ANSI_CONTROL::RED,
+            printf("[timestamp:%07lldms] %s[Consumer%2zu] %s%s\n",
+                elapsedtime(),
+                ANSI_CONTROL::BLUE,
+                threadNum,
                 e.what(),
                 ANSI_CONTROL::DEFAULT);
         }
@@ -137,24 +170,36 @@ void* consume(void* param) {
 void* produce(void* param) {
 
     ThreadArgs* pArgs = (ThreadArgs*)param;
+
+    size_t threadNum = pArgs->threadNum;
+    int* pData = pArgs->item;
+    mutex* pMutex = pArgs->pMutex;
     RingBuffer* pBuffer = pArgs->pRingBuffer;
     period t = pArgs->interval;
-    int data = 0;
 
     while (true) {
         sleep(t);
-        printElapsedtime();
-        printf("%s[Producer] 생성한 데이터: %d%s\n",
+
+        unique_lock<mutex> lock(*pMutex);
+        /* Critical section start */
+        int data = (*pData);
+        pBuffer->put((*pData)++);
+        /* Critical section end */
+        lock.unlock();
+
+        elapsedtime();
+        printf("[timestamp:%07lldms] %s[Producer%2zu] 생성한 데이터: %d%s\n",
+            elapsedtime(),
             ANSI_CONTROL::GREEN,
+            threadNum,
             data,
             ANSI_CONTROL::DEFAULT);
-        pBuffer->put(data++);
+        fflush(stdout);
     }
     
     return nullptr;
 
 }
-
 
 
 /**
@@ -163,59 +208,74 @@ void* produce(void* param) {
  * @param c Consumer의 동작 주기
  * @param p Producer의 동작 주기
  */
-void testbody(period c, period p) {
+void testbody(period p, period c, int pn, int cn) {
     
     signal(SIGINT, sigintHandler);
 
-    cout << "Buffer size: " << BUFFER_SIZE << endl;
-    printf("producer의 데이터 생성속도 평균: 4byte/%zus\n", p);
-    printf("consumer의 데이터 소비속도 평균: 4byte/%zus\n", c);
+    printf("Buffer size: %d\n", SIMUL_PARAM::BUFFER_SIZE);
+    printf("Producer thread 개수: %d\n", pn);
+    printf("Consumer thread 개수: %d\n", cn);
+    printf("Producer의 데이터 생성속도 평균: 4byte/%zus\n", p);
+    printf("Consumer의 데이터 소비속도 평균: 4byte/%zus\n\n", c);
 
-    RingBuffer buffer(BUFFER_SIZE);
+    RingBuffer buffer(SIMUL_PARAM::BUFFER_SIZE);
+    mutex m;
+    int item = 0;
     pthread_t producer;
     pthread_t consumer;
 
-    ThreadArgs consumerArgs { c, &buffer };
-    ThreadArgs producerArgs { p, &buffer };
+    /* CONSUMER_NUM만큼 producer thread를 생성하고 실행한다. */
+    for (size_t i=0; i<pn; i++) {
+        ThreadArgs* pProducerArgs = new ThreadArgs; //TODO 메모리 해제 안 했음
+        pProducerArgs->threadNum = i;
+        pProducerArgs->item = &item;
+        pProducerArgs->pMutex = &m;
+        pProducerArgs->interval = p;
+        pProducerArgs->pRingBuffer = &buffer;
+        pthread_create(&producer, NULL, produce, (void*)(pProducerArgs));
+    }
+    
+    /* CONSUMER_NUM만큼 consumer thread를 생성하고 실행한다. */
+    for (size_t i=0; i<cn; i++) {
+        ThreadArgs* pConsumerArgs = new ThreadArgs; //TODO 메모리 해제 안 했음
+        pConsumerArgs->threadNum = i;
+        pConsumerArgs->item = &item;
+        pConsumerArgs->pMutex = &m;
+        pConsumerArgs->interval = p;
+        pConsumerArgs->pRingBuffer = &buffer;
+        pthread_create(&consumer, NULL, consume, (void*)(pConsumerArgs));
+    }
 
-    // Execute producer threads.
-    pthread_create(&producer, NULL, produce, (void*)(&producerArgs));
+    for (size_t i=0; i<pn; i++)
+        pthread_join(producer, nullptr);
 
-    // Execute consumer threads.
-    pthread_create(&consumer, NULL, consume, (void*)(&consumerArgs));
+    for (size_t i=0; i<cn; i++)
+        pthread_join(consumer, nullptr);
 
-    pthread_join(producer, nullptr);
-    pthread_join(consumer, nullptr);
 }
 
 
-void testcase1() {
+void testcaseA() {
 
-    period consumerPeriod = 1;
-    period producerPeriod = 3;
-
-    cout << "tescase a\n";
-    testbody(consumerPeriod, producerPeriod);
+    printf("tescase a\n");
+    testbody(SIMUL_PARAM::TA_PROD_PERIOD, SIMUL_PARAM::TA_CONS_PERIOD,
+        SIMUL_PARAM::TA_PROD_NUM, SIMUL_PARAM::TA_CONS_NUM);
 
 }
 
 
-void testcase2() {
+void testcaseB() {
 
-    period consumerPeriod = 1;
-    period producerPeriod = 1;
-
-    cout << "tescase b\n";
-    testbody(consumerPeriod, producerPeriod);
+    printf("tescase b\n");
+    testbody(SIMUL_PARAM::TB_PROD_PERIOD, SIMUL_PARAM::TB_CONS_PERIOD,
+        SIMUL_PARAM::TB_PROD_NUM, SIMUL_PARAM::TB_CONS_NUM);
 }
 
 
-void testcase3() {
+void testcaseC() {
 
-    period consumerPeriod = 5;
-    period producerPeriod = 1;
-
-    cout << "tescase b\n";
-    testbody(consumerPeriod, producerPeriod);
+    printf("tescase c\n");
+    testbody(SIMUL_PARAM::TC_PROD_PERIOD, SIMUL_PARAM::TC_CONS_PERIOD,
+        SIMUL_PARAM::TC_PROD_NUM, SIMUL_PARAM::TC_CONS_NUM);
 
 }

@@ -80,6 +80,9 @@ namespace rtos {
      * 데이터를 저장할 버퍼 주소
      */
     typedef struct thread_args {
+        size_t threadNum;
+        int* item;
+        mutex* pMutex;
         period interval;
         RingBuffer* pRingBuffer;
     } ThreadArgs;
