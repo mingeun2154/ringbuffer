@@ -123,7 +123,7 @@ long long elapsedtime() {
     auto duration = now.time_since_epoch();  // 에포크로부터의 시간 간격 계산
     auto milliseconds = chrono::duration_cast<chrono::milliseconds>(duration).count();  // 밀리초로 변환
 
-    return  (milliseconds - start) % 10000;
+    return  (milliseconds - start) % 10000000;
 }
 
 
