@@ -12,6 +12,9 @@
 #include <vector>
 #include <mutex>
 #include <exception>
+#ifdef __linux__
+    #include <condition_variable>
+#endif
 
 typedef size_t period;
 

@@ -68,7 +68,7 @@ void sigintHandler(int);
 void* produce(void*); // Body of producer thread.
 void* consume(void*); // Body of consumer thread.
 
-void testbody(period, period, int, int);
+void testbody(period, period, size_t, size_t);
 void testcaseA(); // Data의 평균 발생속도 < 평균 처리속도
 void testcaseB(); // Data의 평균 발생속도 = 평균 처리속도
 void testcaseC(); // Data의 평균 발생속도 > 평균 처리속도
@@ -208,13 +208,13 @@ void* produce(void* param) {
  * @param c Consumer의 동작 주기
  * @param p Producer의 동작 주기
  */
-void testbody(period p, period c, int pn, int cn) {
+void testbody(period p, period c, size_t pn, size_t cn) {
     
     signal(SIGINT, sigintHandler);
 
     printf("Buffer size: %d\n", SIMUL_PARAM::BUFFER_SIZE);
-    printf("Producer thread 개수: %d\n", pn);
-    printf("Consumer thread 개수: %d\n", cn);
+    printf("Producer thread 개수: %ld\n", pn);
+    printf("Consumer thread 개수: %ld\n", cn);
     printf("Producer의 데이터 생성속도 평균: 4byte/%zus\n", p);
     printf("Consumer의 데이터 소비속도 평균: 4byte/%zus\n\n", c);
 
