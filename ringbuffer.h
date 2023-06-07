@@ -12,6 +12,7 @@
 #include <vector>
 #include <mutex>
 #include <exception>
+#include <queue>
 #ifdef __linux__
     #include <condition_variable>
 #endif
@@ -73,14 +74,18 @@ namespace rtos {
     }; // EmptyBufferReadException
 
 
-    /**@struct ProducerArgs
-     * @brief 데이터 생성 쓰레드에게 전달될 정보.
+    /**@struct ThreadArgs
+     * @brief 데이터 생성, 처리 쓰레드에게 전달될 정보.
      * @var ProducerArgs::data
      * Buffer에 저장할 데이터
      * @var ProducerArgs::interval
      * Buffer에 접근하는 주기(정수값)
      * @var ProducerArgs::pRingBuffer
      * 데이터를 저장할 버퍼 주소
+     * @var ProducerArgs::pMsgq
+     * 출력할 메세지를 저장할 큐
+     * @var ProducerArgs::pDistribution
+     * 실행시간이 저장된 배열의 포인터
      */
     typedef struct thread_args {
         size_t threadNum;
@@ -88,8 +93,27 @@ namespace rtos {
         mutex* pMutex;
         period interval;
         RingBuffer* pRingBuffer;
+        queue<char*>* pMsgq;
+        mutex* pMsgqMutex;
+        period* pDistribution;
     } ThreadArgs;
 
+
+
+    /**@struct ObserverArgs
+     * @brief stdout에 출력을 담당하는 observer 쓰레드에게 전달할 정보.
+     * @var ObserverArgs::pMsgq
+     * 출력할 메세지가 저장된 큐에 대한 포인터
+     * @var ObserverArgs::pMsgqMutex
+     * 메세지큐에 접근하기 위한 mutex
+     * @var ObserverArgs::counter
+     * 종료 조건
+     */
+    typedef struct observer_args {
+        queue<char*>* pMsgq;
+        mutex* pMsgqMutex;
+        size_t counter;
+    } ObserverArgs;
         
 }; // rtos
 
