@@ -49,7 +49,7 @@ namespace SIMUL_PARAM {
     const double PROD_SIGMA = 30.0; // 데이터 발생주기 표준편차
     const double CONS_SIGMA = 1.0; // 데이터 처리주기 표준편차
 
-    const period DURATION = 1000 * 30; // 시뮬레이션 진행 시간 (milliseconds)
+    const int DURATION = 1000 * 2; // 시뮬레이션 진행 시간 (milliseconds)
     const int SAMPLE_SIZE = 20; // 데이터 발생/처리 횟수
 
     // testcase a
@@ -155,7 +155,7 @@ void printUsage() {
  *
  * @return 정수 값(초)
  */
-long long elapsedtime() {
+int elapsedtime() {
 
     // 프로그램 시작 시각 초기화
     static auto start = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
@@ -164,7 +164,7 @@ long long elapsedtime() {
     auto duration = now.time_since_epoch();
     auto milliseconds = chrono::duration_cast<chrono::milliseconds>(duration).count();  // 밀리초로 변환
 
-    return  (milliseconds - start) % 10000000;
+    return  static_cast<int>((milliseconds - start) % 10000000); // 10000s까지 표현 가능
 }
 
 
@@ -209,7 +209,8 @@ void* consume(void* param) {
 
     int last_data = 0; // 마지막으로 처리한 데이터 (loss 계산에 사용)
 
-    for (size_t i=0; i<SIMUL_PARAM::SAMPLE_SIZE; ++i) {
+    size_t i = 0;
+    while (elapsedtime() < SIMUL_PARAM::DURATION) {
         this_thread::sleep_for(chrono::milliseconds(pDistribution[i]));
         char* pMsgbuff = new char[SIMUL_PARAM::MSG_LENGTH];
         try {
@@ -220,7 +221,7 @@ void* consume(void* param) {
                 loss += (data - last_data - 1);
             last_data = data;
 
-            sprintf(pMsgbuff,"[timestamp:%07lldms] %s[Consumer%2zu] 소비한 데이터: %d%s\n",
+            sprintf(pMsgbuff,"[timestamp:%07dms] %s[Consumer%2zu] 소비한 데이터: %d%s\n",
                 elapsedtime(),
                 ANSI_CONTROL::BLUE,
                 threadNum,
@@ -228,13 +229,14 @@ void* consume(void* param) {
                 ANSI_CONTROL::DEFAULT);
         }
         catch (const EmptyBufferReadException& e) {
-            sprintf(pMsgbuff, "[timestamp:%07lldms] %s[Consumer%2zu] %s%s\n",
+            sprintf(pMsgbuff, "[timestamp:%07dms] %s[Consumer%2zu] %s%s\n",
                 elapsedtime(),
                 ANSI_CONTROL::BLUE,
                 threadNum,
                 e.what(),
                 ANSI_CONTROL::DEFAULT);
             miss++;
+
         }
 
         // 출력 메세지 저장
@@ -243,9 +245,11 @@ void* consume(void* param) {
         pMsgq->push(pMsgbuff);
         /* Critical section end */
         msgqLock.unlock();
+
+        i = (i+1) % SIMUL_PARAM::SAMPLE_SIZE;
     }
 
-    loss += (SIMUL_PARAM::SAMPLE_SIZE - 1 - last_data);
+    // loss += (SIMUL_PARAM::SAMPLE_SIZE - 1 - last_data);
 
     return nullptr;
 
@@ -265,7 +269,8 @@ void* produce(void* param) {
     mutex* pMsgqMutex = pArgs->pMsgqMutex;
     period* pDistribution = pArgs->pDistribution;
 
-    for (size_t i=0; i<SIMUL_PARAM::SAMPLE_SIZE; ++i) {
+    size_t i = 0;
+    while (elapsedtime() < SIMUL_PARAM::DURATION) {
         this_thread::sleep_for(chrono::milliseconds(pDistribution[i]));
 
         unique_lock<mutex> lock(*pMutex);
@@ -277,7 +282,7 @@ void* produce(void* param) {
 
         char* pMsgbuff = new char[SIMUL_PARAM::MSG_LENGTH];
         elapsedtime();
-        sprintf(pMsgbuff, "[timestamp:%07lldms] %s[Producer%2zu] 생성한 데이터: %d%s\n",
+        sprintf(pMsgbuff, "[timestamp:%07dms] %s[Producer%2zu] 생성한 데이터: %d%s\n",
             elapsedtime(),
             ANSI_CONTROL::GREEN,
             threadNum,
@@ -290,6 +295,8 @@ void* produce(void* param) {
         pMsgq->push(pMsgbuff);
         /* Critical section end */
         msgqLock.unlock();
+
+        i = (i + 1) % SIMUL_PARAM::SAMPLE_SIZE;
     }
     
     return nullptr;
@@ -311,18 +318,15 @@ void* observe(void* param) {
     ObserverArgs* pArgs = static_cast<ObserverArgs*>(param);
     queue<char*>* pMsgq = pArgs->pMsgq;
     mutex* pMsgqMutex = pArgs->pMsgqMutex;
-    size_t end = pArgs->counter;
-    size_t progress = 0;
 
     char* msg = nullptr;
 
-    while (progress != end) {
+    while (elapsedtime() < SIMUL_PARAM::DURATION) {
          unique_lock<mutex> msgqLock(*pMsgqMutex);
         /* Critical section start */
         if (!pMsgq->empty()) {
             msg = pMsgq->front();
             pMsgq->pop();
-            progress++;
         }
         /* Critical section end */
         msgqLock.unlock();
@@ -350,7 +354,7 @@ void testbody(period p, period c, size_t pn, size_t cn,
     signal(SIGINT, sigintHandler);
 
     printf("Buffer size: %d\n", SIMUL_PARAM::BUFFER_SIZE);
-    printf("표본의 크기(Producer, Consumer 각각의 실행 횟수): %d\n", SIMUL_PARAM::SAMPLE_SIZE);
+    printf("표본의 크기: %d\n", SIMUL_PARAM::SAMPLE_SIZE);
     printf("Producer의 데이터 생성주기 평균: %zums\n", p);
     printf("Consumer의 데이터 소비주기 평균: %zums\n", c);
     printf("Producer의 데이터 생성주기 표준편차: %.2f\n", SIMUL_PARAM::PROD_SIGMA);
@@ -404,7 +408,8 @@ void testbody(period p, period c, size_t pn, size_t cn,
     for (size_t i=0; i<cn; i++)
         pthread_join(consumer, NULL);
 
-    printf("\n표본의 크기(Producer, Consumer 각각의 실행 횟수): %d\n", SIMUL_PARAM::SAMPLE_SIZE);
+    printf("\n시뮬레이션 시간: %dms\n", SIMUL_PARAM::DURATION);
+    printf("표본의 크기: %d\n", SIMUL_PARAM::SAMPLE_SIZE);
     printf("Producer의 데이터 생성주기 평균: %zums\n", p);
     printf("Consumer의 데이터 소비주기 평균: %zums\n", c);
     printf("Producer의 데이터 생성주기 표준편차: %.2f\n", SIMUL_PARAM::PROD_SIGMA);
