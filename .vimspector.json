@@ -1,0 +1,21 @@
+{
+  "configurations": {
+    "exe_a": {
+      "adapter": "CodeLLDB",
+      "configuration": {
+		"stopOnEntry": true,
+        "request": "launch",
+        "program": "/Users/mingeun/Library/Mobile Documents/com~apple~CloudDocs/KWU/4-1/software engineering/ringbuffer/exe",
+        "args": ["a"],
+        "externalConsole": true, 
+		"showDisassembly": false,
+		"breakpoints": {
+			"exception": {
+			  "cpp_throw": "Y",
+			  "cpp_catch": "Y"
+			}
+		}
+	  }
+	}
+  }
+}
