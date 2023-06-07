@@ -32,6 +32,7 @@ namespace ANSI_CONTROL {
     const char* RED = "\033[0;31m";
     const char* GREEN = "\033[0;32m";
     const char* BLUE = "\033[0;34m";
+    const char* CYAN = "\033[0;36m";
     const char* DEFAULT = "\033[0m";
     const char* CLEAR = "\033[2J\033[2H";
 
@@ -46,10 +47,11 @@ namespace SIMUL_PARAM {
 
     const int BUFFER_SIZE = 5;
 
-    const double PROD_SIGMA = 30.0; // 데이터 발생주기 표준편차
+    const double PROD_SIGMA = 300.0; // 데이터 발생주기 표준편차
     const double CONS_SIGMA = 1.0; // 데이터 처리주기 표준편차
 
-    const int DURATION = 1000 * 2; // 시뮬레이션 진행 시간 (milliseconds)
+    const int DURATION = 1500; // 시뮬레이션 진행 시간 (milliseconds)
+    const int DURATION_MARGIN = 20;
     const int SAMPLE_SIZE = 20; // 데이터 발생/처리 횟수
 
     // testcase a
@@ -321,7 +323,7 @@ void* observe(void* param) {
 
     char* msg = nullptr;
 
-    while (elapsedtime() < SIMUL_PARAM::DURATION) {
+    while (elapsedtime() < SIMUL_PARAM::DURATION + SIMUL_PARAM::DURATION_MARGIN) {
          unique_lock<mutex> msgqLock(*pMsgqMutex);
         /* Critical section start */
         if (!pMsgq->empty()) {
@@ -408,14 +410,14 @@ void testbody(period p, period c, size_t pn, size_t cn,
     for (size_t i=0; i<cn; i++)
         pthread_join(consumer, NULL);
 
-    printf("\n시뮬레이션 시간: %dms\n", SIMUL_PARAM::DURATION);
+    printf("\n시뮬레이션 진행 시간: %dms\n", SIMUL_PARAM::DURATION);
     printf("표본의 크기: %d\n", SIMUL_PARAM::SAMPLE_SIZE);
     printf("Producer의 데이터 생성주기 평균: %zums\n", p);
     printf("Consumer의 데이터 소비주기 평균: %zums\n", c);
     printf("Producer의 데이터 생성주기 표준편차: %.2f\n", SIMUL_PARAM::PROD_SIGMA);
     printf("Consumer의 데이터 소비주기 표준편차: %.2f\n", SIMUL_PARAM::CONS_SIGMA);
-    printf("%s빈 버퍼에 접근한 횟수: %zu%s\n", ANSI_CONTROL::RED, miss, ANSI_CONTROL::DEFAULT);
-    printf("%s손실된 데이터 개수: %d%s\n\n", ANSI_CONTROL::RED, loss, ANSI_CONTROL::DEFAULT);
+    printf("%s빈 버퍼에 접근한 횟수: %zu%s\n", ANSI_CONTROL::CYAN, miss, ANSI_CONTROL::DEFAULT);
+    printf("%s손실된 데이터 개수: %d%s\n\n", ANSI_CONTROL::CYAN, loss, ANSI_CONTROL::DEFAULT);
 }
 
 
