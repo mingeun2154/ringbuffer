@@ -46,10 +46,11 @@ namespace SIMUL_PARAM {
 
     const int BUFFER_SIZE = 5;
 
-    const double PROD_SIGMA = 50.0; // 데이터 발생속도 표준편차
-    const double CONS_SIGMA = 50.0; // 데이터 처리속도 표준편차
+    const double PROD_SIGMA = 30.0; // 데이터 발생주기 표준편차
+    const double CONS_SIGMA = 1.0; // 데이터 처리주기 표준편차
 
-    const int SAMPLE_SIZE = 100; // 데이터 발생/처리 횟수
+    const period DURATION = 1000 * 30; // 시뮬레이션 진행 시간 (milliseconds)
+    const int SAMPLE_SIZE = 20; // 데이터 발생/처리 횟수
 
     // testcase a
     const period TA_PROD_PERIOD = 100; // 데이터 평균발생주기 (milliseconds)
@@ -82,6 +83,7 @@ void* consume(void*); // Body of consumer thread.
 void* observe(void*); // Body of observer thread.
 
 size_t miss = 0; // 빈 버퍼에 접근한 횟수
+int loss = 0; // 손실된 데이터 개수
 void testbody(period, period, size_t, size_t, queue<char*>&, mutex&);
 void testcaseA(queue<char*>&, mutex&); // Data의 평균 발생속도 < 평균 처리속도
 void testcaseB(queue<char*>&, mutex&); // Data의 평균 발생속도 = 평균 처리속도
@@ -205,15 +207,24 @@ void* consume(void* param) {
     mutex* pMsgqMutex = pArgs->pMsgqMutex;
     period* pDistribution = pArgs->pDistribution;
 
+    int last_data = 0; // 마지막으로 처리한 데이터 (loss 계산에 사용)
+
     for (size_t i=0; i<SIMUL_PARAM::SAMPLE_SIZE; ++i) {
         this_thread::sleep_for(chrono::milliseconds(pDistribution[i]));
         char* pMsgbuff = new char[SIMUL_PARAM::MSG_LENGTH];
         try {
+            int data = pBuffer->get();
+
+            // loss 계산
+            if (last_data + 1 < data)
+                loss += (data - last_data - 1);
+            last_data = data;
+
             sprintf(pMsgbuff,"[timestamp:%07lldms] %s[Consumer%2zu] 소비한 데이터: %d%s\n",
                 elapsedtime(),
                 ANSI_CONTROL::BLUE,
                 threadNum,
-                (int)(pBuffer->get()),
+                data,
                 ANSI_CONTROL::DEFAULT);
         }
         catch (const EmptyBufferReadException& e) {
@@ -233,6 +244,8 @@ void* consume(void* param) {
         /* Critical section end */
         msgqLock.unlock();
     }
+
+    loss += (SIMUL_PARAM::SAMPLE_SIZE - 1 - last_data);
 
     return nullptr;
 
@@ -396,7 +409,8 @@ void testbody(period p, period c, size_t pn, size_t cn,
     printf("Consumer의 데이터 소비주기 평균: %zums\n", c);
     printf("Producer의 데이터 생성주기 표준편차: %.2f\n", SIMUL_PARAM::PROD_SIGMA);
     printf("Consumer의 데이터 소비주기 표준편차: %.2f\n", SIMUL_PARAM::CONS_SIGMA);
-    printf("%s빈 버퍼에 접근한 횟수: %zu%s\n\n", ANSI_CONTROL::RED, miss, ANSI_CONTROL::DEFAULT);
+    printf("%s빈 버퍼에 접근한 횟수: %zu%s\n", ANSI_CONTROL::RED, miss, ANSI_CONTROL::DEFAULT);
+    printf("%s손실된 데이터 개수: %d%s\n\n", ANSI_CONTROL::RED, loss, ANSI_CONTROL::DEFAULT);
 }
 
 
