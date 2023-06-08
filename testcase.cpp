@@ -45,30 +45,30 @@ namespace ANSI_CONTROL {
  */
 namespace SIMUL_PARAM {
 
-    const int BUFFER_SIZE = 5;
+    const int BUFFER_SIZE = 10;
 
-    const double PROD_SIGMA = 300.0; // 데이터 발생주기 표준편차
-    const double CONS_SIGMA = 1.0; // 데이터 처리주기 표준편차
+    const double PROD_SIGMA = 1.0; // 데이터 발생주기 표준편차
+    const double CONS_SIGMA = 2.0; // 데이터 처리주기 표준편차
 
-    const int DURATION = 1500; // 시뮬레이션 진행 시간 (milliseconds)
+    const int DURATION = 5000; // 시뮬레이션 진행 시간 (milliseconds)
     const int DURATION_MARGIN = 20;
-    const int SAMPLE_SIZE = 20; // 데이터 발생/처리 횟수
+    const int SAMPLE_SIZE = 50; // 정규분포를 이루는 주기의 개수
 
     // testcase a
-    const period TA_PROD_PERIOD = 100; // 데이터 평균발생주기 (milliseconds)
-    const period TA_CONS_PERIOD = 50; // 데이터 평균처리주기 (milliseconds)
+    const period TA_PROD_PERIOD = 50; // 데이터 평균발생주기 (milliseconds)
+    const period TA_CONS_PERIOD = 40; // 데이터 평균처리주기 (milliseconds)
     const int TA_PROD_NUM = 1;
     const int TA_CONS_NUM = 1;
 
     // testcase b
-    const period TB_PROD_PERIOD = 50; // 데이터 평균발생주기 (milliseconds)
-    const period TB_CONS_PERIOD = 50; // 데이터 평균처리주기 (milliseconds)
+    const period TB_PROD_PERIOD = 20; // 데이터 평균발생주기 (milliseconds)
+    const period TB_CONS_PERIOD = 20; // 데이터 평균처리주기 (milliseconds)
     const int TB_PROD_NUM = 1;
     const int TB_CONS_NUM = 1;
 
     // testcase c
-    const period TC_PROD_PERIOD = 50; // 데이터 평균발생주기 (milliseconds)
-    const period TC_CONS_PERIOD = 150; // 데이터 평균처리주기 (milliseconds)
+    const period TC_PROD_PERIOD = 20; // 데이터 평균발생주기 (milliseconds)
+    const period TC_CONS_PERIOD = 30; // 데이터 평균처리주기 (milliseconds)
     const int TC_PROD_NUM = 1;
     const int TC_CONS_NUM = 1;
 
@@ -85,7 +85,9 @@ void* consume(void*); // Body of consumer thread.
 void* observe(void*); // Body of observer thread.
 
 size_t miss = 0; // 빈 버퍼에 접근한 횟수
+size_t accessCount = 0; // 처리기가 버퍼에 접근한 횟수
 int loss = 0; // 손실된 데이터 개수
+int produceCount = 0; // 생성기가 생성한 데이터 개수
 void testbody(period, period, size_t, size_t, queue<char*>&, mutex&);
 void testcaseA(queue<char*>&, mutex&); // Data의 평균 발생속도 < 평균 처리속도
 void testcaseB(queue<char*>&, mutex&); // Data의 평균 발생속도 = 평균 처리속도
@@ -215,6 +217,8 @@ void* consume(void* param) {
     while (elapsedtime() < SIMUL_PARAM::DURATION) {
         this_thread::sleep_for(chrono::milliseconds(pDistribution[i]));
         char* pMsgbuff = new char[SIMUL_PARAM::MSG_LENGTH];
+
+        accessCount += 1;
         try {
             int data = pBuffer->get();
 
@@ -279,6 +283,7 @@ void* produce(void* param) {
         /* Critical section start */
         int data = (*pData);
         pBuffer->put((*pData)++);
+        produceCount += 1;
         /* Critical section end */
         lock.unlock();
 
@@ -411,13 +416,22 @@ void testbody(period p, period c, size_t pn, size_t cn,
         pthread_join(consumer, NULL);
 
     printf("\n시뮬레이션 진행 시간: %dms\n", SIMUL_PARAM::DURATION);
-    printf("표본의 크기: %d\n", SIMUL_PARAM::SAMPLE_SIZE);
+    printf("버퍼 크기: %d\n", SIMUL_PARAM::BUFFER_SIZE);
+    printf("표본 크기: %d\n", SIMUL_PARAM::SAMPLE_SIZE);
     printf("Producer의 데이터 생성주기 평균: %zums\n", p);
     printf("Consumer의 데이터 소비주기 평균: %zums\n", c);
     printf("Producer의 데이터 생성주기 표준편차: %.2f\n", SIMUL_PARAM::PROD_SIGMA);
     printf("Consumer의 데이터 소비주기 표준편차: %.2f\n", SIMUL_PARAM::CONS_SIGMA);
-    printf("%s빈 버퍼에 접근한 횟수: %zu%s\n", ANSI_CONTROL::CYAN, miss, ANSI_CONTROL::DEFAULT);
-    printf("%s손실된 데이터 개수: %d%s\n\n", ANSI_CONTROL::CYAN, loss, ANSI_CONTROL::DEFAULT);
+    // printf("%s빈 버퍼에 접근한 횟수: %zu%s\n", ANSI_CONTROL::CYAN, miss, ANSI_CONTROL::DEFAULT);
+    // printf("%s손실된 데이터 개수: %d%s\n\n", ANSI_CONTROL::CYAN, loss, ANSI_CONTROL::DEFAULT);
+    printf("%s빈 버퍼에 접근한 비율: %.2f%%%s\n",
+        ANSI_CONTROL::CYAN,
+        static_cast<float>(miss)/static_cast<float>(accessCount)*100,
+        ANSI_CONTROL::DEFAULT);
+    printf("%s손실된 데이터 비율: %.2f%%%s\n\n",
+        ANSI_CONTROL::CYAN,
+        static_cast<float>(loss)/static_cast<float>(produceCount)*100,
+        ANSI_CONTROL::DEFAULT);
 }
 
 

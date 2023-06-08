@@ -4,7 +4,7 @@ OBJS=testcase.o ringbuffer.o
 
 CC=g++
 
-CFLAGS=-Wall -g -std=c++11 -pthread
+CFLAGS=-w -g -std=c++11 -pthread
 
 $(EXE): $(OBJS) Makefile
 	$(CC) $(CFLAGS) $(OBJS) -o $@
